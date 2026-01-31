@@ -96,5 +96,6 @@ def register():
 
 if __name__ == '__main__':
     os.makedirs(DATA_DIR, exist_ok=True)
-    print("[INFO] Starting Flask face recognition server on port 5000...")
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    print(f"[INFO] Starting Flask face recognition server on port {port}...")
+    app.run(host='0.0.0.0', port=port)
