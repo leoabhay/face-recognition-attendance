@@ -8,3 +8,4 @@ venv
 face_data/*.npy
 Dockerfile
 .dockerignore
+.env

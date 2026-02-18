@@ -8,15 +8,25 @@ import base64
 from pymongo import MongoClient
 from bson.binary import Binary
 import pickle
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
 # MongoDB Setup
-MONGO_URI = os.environ.get('MONGO_URI', 'mongodb+srv://abhaycdry10:Abhay123andres@cluster0.lresqtr.mongodb.net/')
+MONGO_URI = os.environ.get('MONGO_URI')
+if not MONGO_URI:
+    print("[ERROR] MONGO_URI not found in environment variables!")
 client = MongoClient(MONGO_URI)
 db = client['CampusEase']
 collection = db['face_encodings']
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({ "status": "healthy", "message": "Face recognition server is running" }), 200
 
 def load_encodings():
     """

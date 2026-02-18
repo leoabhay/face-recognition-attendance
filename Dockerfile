@@ -16,7 +16,11 @@ RUN apt-get update && apt-get install -y \
 # Set the working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
+# Install dlib and face_recognition first to leverage Docker layer caching
+# This step is the slowest (5-15 mins), so we want to cache it
+RUN pip install --no-cache-dir dlib==19.24.1 face_recognition==1.3.0
+
+# Copy requirements and install remaining dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir gunicorn
