@@ -5,33 +5,39 @@ import numpy as np
 import cv2
 import os
 import base64
+from pymongo import MongoClient
+from bson.binary import Binary
+import pickle
 
 app = Flask(__name__)
 CORS(app)
 
-DATA_DIR = 'face_data'
+# MongoDB Setup
+MONGO_URI = os.environ.get('MONGO_URI', 'mongodb+srv://abhaycdry10:Abhay123andres@cluster0.lresqtr.mongodb.net/')
+client = MongoClient(MONGO_URI)
+db = client['CampusEase']
+collection = db['face_encodings']
 
 def load_encodings():
     """
-    Load all saved face encodings (.npy files) from DATA_DIR.
+    Load all saved face encodings from MongoDB.
     Returns:
         encodings: List of numpy arrays representing face encodings.
         rollnos: Corresponding list of roll numbers (ints).
     """
     encodings, rollnos = [], []
-    if not os.path.exists(DATA_DIR):
-        print(f"[WARN] Data directory '{DATA_DIR}' does not exist. Creating...")
-        os.makedirs(DATA_DIR)
-    for file in os.listdir(DATA_DIR):
-        if file.endswith('.npy'):
-            try:
-                rollno = int(file.replace('.npy', ''))
-                enc = np.load(os.path.join(DATA_DIR, file))
-                encodings.append(enc)
-                rollnos.append(rollno)
-            except Exception as e:
-                print(f"[ERROR] Failed to load encoding from {file}: {e}")
-    print(f"[INFO] Loaded {len(encodings)} known face encodings")
+    try:
+        cursor = collection.find({})
+        for doc in cursor:
+            rollno = doc['rollno']
+            # Encodings are stored as lists in MongoDB
+            enc = np.array(doc['encoding'])
+            encodings.append(enc)
+            rollnos.append(rollno)
+        print(f"[INFO] Loaded {len(encodings)} known face encodings from DB")
+    except Exception as e:
+        print(f"[ERROR] Failed to load encodings from DB: {e}")
+    
     return encodings, rollnos
 
 @app.route('/verify-face', methods=['POST'])
@@ -41,7 +47,7 @@ def verify():
         return jsonify({ "success": False, "message": "No image provided" }), 400
 
     try:
-        # Decode base64 image string (data URL format: data:image/png;base64,...)
+        # Decode base64 image string
         image_data = base64.b64decode(data['image'].split(',')[1])
         np_data = np.frombuffer(image_data, np.uint8)
         frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
@@ -49,8 +55,11 @@ def verify():
         return jsonify({ "success": False, "message": "Invalid image data", "error": str(e) }), 400
 
     known_encodings, rollnos = load_encodings()
+    
+    if not known_encodings:
+        return jsonify({ "success": False, "message": "No registered faces in database" })
 
-    # Get face encodings from the input image (can be multiple faces)
+    # Get face encodings from the input image
     faces = face_recognition.face_encodings(frame)
 
     print(f"[INFO] Detected {len(faces)} face(s) in the input image")
@@ -71,7 +80,7 @@ def register():
     if not data or 'image' not in data or 'rollno' not in data:
         return jsonify({ "success": False, "message": "Missing rollno or image" }), 400
 
-    rollno = data['rollno']
+    rollno = int(data['rollno'])
 
     try:
         image_data = base64.b64decode(data['image'].split(',')[1])
@@ -86,15 +95,23 @@ def register():
         return jsonify({ "success": False, "message": "No face found in the image" }), 400
 
     try:
-        np.save(os.path.join(DATA_DIR, f"{rollno}.npy"), faces[0])
-        print(f"[INFO] Registered face for rollno={rollno}")
+        # Convert numpy array to list for MongoDB storage
+        encoding_list = faces[0].tolist()
+        
+        # Upsert: update if rollno exists, otherwise insert
+        collection.update_one(
+            {'rollno': rollno},
+            {'$set': {'encoding': encoding_list}},
+            upsert=True
+        )
+        print(f"[INFO] Registered face for rollno={rollno} in MongoDB")
     except Exception as e:
-        return jsonify({ "success": False, "message": "Failed to save encoding", "error": str(e) }), 500
+        print(f"[ERROR] Failed to save encoding to DB: {e}")
+        return jsonify({ "success": False, "message": "Failed to save encoding to DB", "error": str(e) }), 500
 
-    # Return the faceId (same as rollno as string)
     return jsonify({ "success": True, "faceId": str(rollno) })
 
 if __name__ == '__main__':
-    os.makedirs(DATA_DIR, exist_ok=True)
-    print("[INFO] Starting Flask face recognition server on port 5000...")
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    print(f"[INFO] Starting Flask face recognition server on port {port}...")
+    app.run(host='0.0.0.0', port=port)
