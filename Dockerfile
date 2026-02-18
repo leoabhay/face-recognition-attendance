@@ -1,6 +1,5 @@
-# Use a pre-built image that already has dlib and face_recognition installed
-# This avoids the long compilation process
-FROM datamachines/face_recognition:cpu-latest
+# Use a reliable image with dlib and face_recognition pre-installed
+FROM animcogn/face_recognition:cpu
 
 # Set the working directory
 WORKDIR /app
